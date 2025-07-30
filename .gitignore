@@ -1,0 +1,31 @@
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+*.deb
+# Test binary, built with `go test -c`
+*.test
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+# Hidden MacOS directory
+.DS_STORE
+.DS_Store
+# More stuff, similar to what svn did:
+*.o
+*.lo
+*.la
+#*#
+.*.rej
+*.rej
+.*~
+*~
+.#*
+*.o.flags
+.depend
+obj
+obj.*
+CloudCamImages/
+CloudCamOVR/
+timeslapses/
+code/.venv/

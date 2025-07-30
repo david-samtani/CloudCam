@@ -1,0 +1,23 @@
+services:
+  cloudcams:
+    restart: unless-stopped
+    image: cloudcam
+    container_name: cloudcams-instance
+    user: cloudcam
+    build:
+      context: .        
+    volumes:
+       - cloudcams:/cloudcams      
+    # logging:
+    #   driver: syslog
+    #   options:
+    #     syslog-address: "udp://cfht-graylog:514"
+    #     tag: cloudcams
+volumes:
+  cloudcams:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /cloudcams
+
