@@ -1,0 +1,5 @@
+fastapi[standard]
+opencv-python
+numpy
+astropy
+skyfield
