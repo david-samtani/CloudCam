@@ -1,0 +1,33 @@
+services:
+  cloudcams:
+    restart: unless-stopped
+    image: cloudcam
+    container_name: cloudcams-instance
+    environment:
+          - DISPLAY=${DISPLAY}
+          - XAUTHORITY=/home/cloudcam/.Xauthority
+          - MPLBACKEND=TkAgg        # force an interactive backend
+    user: "${UID:-1000}:${GID:-1000}"
+    build:
+      context: .
+      args:
+        HOST_UID: ${UID:-1000}           # ← picked up from your shell
+        HOST_GID: ${GID:-1000}
+    volumes:
+      - cloudcams:/cloudcams
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      - ${HOME}/.Xauthority:/home/cloudcam/.Xauthority:ro
+    # logging:
+    #   driver: syslog
+    #   options:
+    #     syslog-address: "udp://cfht-graylog:514"
+    #     tag: cloudcams
+              
+volumes:
+  cloudcams:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /cloudcams
+
