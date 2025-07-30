@@ -1,0 +1,76 @@
+stages:
+  - init
+  - build
+  - deploy
+
+variables:
+  CLOUDCAMS_WORKDIR: "/opt/cloudcams/"
+  ENVIRONMENT: "test"
+  IMAGE_TAG: "latest"    
+  GITLAB_RUNNER_TAG:  "instrumentation-group-shell"
+
+before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+
+workflow:
+  # Setting environment main runs on production branch runs on test.
+  rules:    
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      variables:
+        GITLAB_RUNNER_TAG: "instrumentation-group-shell"
+        ENVIRONMENT: "production"        
+        IMAGE_TAG: "latest"
+    - if: $CI_COMMIT_REF_NAME != $CI_DEFAULT_BRANCH
+      variables:
+        GITLAB_RUNNER_TAG: "instrumentation-group-shell"
+        ENVIRONMENT: "test"        
+        IMAGE_TAG: $CI_COMMIT_REF_NAME
+        
+init:
+  stage: init
+  environment: $ENVIRONMENT
+  tags:
+    - $GITLAB_RUNNER_TAG
+  script: 
+    - echo "Deploying Cloudcams..."
+    - |
+        if [[ "$CI_COMMIT_BRANCH" == "$CI_DEFAULT_BRANCH" ]]; then                  
+          echo "Running on main branch. Deploying to Production... "
+        else          
+          echo "Running on ${CI_COMMIT_BRANCH} branch. Deploying to Development/Test..."
+        fi
+    - docker info    
+
+build:
+  stage: build
+  environment: $ENVIRONMENT
+  tags:
+    - $GITLAB_RUNNER_TAG
+  script: 
+    - echo "Checking for local directory."
+    - |
+      if [[ -d "${CLOUDCAMS_WORKDIR}" ]]; then
+        echo "${CLOUDCAMS_WORKDIR} directory dependency exists."
+      else 
+        echo "${CLOUDCAMS_WORKDIR} dependency directory not found. Exiting..."
+        exit 1
+      fi 
+    - |
+      echo "Copying files to: ${CLOUDCAMS_WORKDIR}..."
+      BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ");
+      echo $BUILD_DATE > BUILD_DATE;
+      cp -r BUILD_DATE README.md docker-compose.yml Dockerfile ${CLOUDCAMS_WORKDIR};          
+    - docker compose build #build and push as gitlab-runner.      
+
+deploy:
+  stage: deploy
+  environment: $ENVIRONMENT
+  tags:
+    - $GITLAB_RUNNER_TAG
+  script:  
+      - echo "Deploying from from the $CI_COMMIT_BRANCH branch. "
+      - echo "Attempting to start Docker image(s) as oxidized..."        
+      - cd ${CLOUDCAMS_WORKDIR}      
+      - docker compose down --remove-orphans       
+      - docker compose up -d # Run container as oxidized
+      - echo "Done..."
