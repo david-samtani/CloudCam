@@ -160,16 +160,16 @@ static void add_text(cairos_t* cairos,
     }
         
     // draw black text behind the white text, on the foreground layer.
-    cairo_save(cairos->fg);
-    cairo_set_source_rgba(cairos->fg, 0, 0, 0, 1);
-    for (dy=-1; dy<=1; dy++) {
-        for (dx=-1; dx<=1; dx++) {
-            cairo_move_to(cairos->fg, px+dx, py+dy);
-            cairo_show_text(cairos->fg, txt);
-            cairo_stroke(cairos->fg);
-        }
-    }
-    cairo_restore(cairos->fg);
+//    cairo_save(cairos->fg);
+  //  cairo_set_source_rgba(cairos->fg, 0, 0, 0, 1);
+    //for (dy=-1; dy<=1; dy++) {
+      //  for (dx=-1; dx<=1; dx++) {
+        //    cairo_move_to(cairos->fg, px+dx, py+dy);
+          //  cairo_show_text(cairos->fg, txt);
+            //cairo_stroke(cairos->fg);
+      //  }
+    //}
+  //  cairo_restore(cairos->fg);
 
     // draw the white text.
     cairo_move_to(cairos->fg, px, py);
@@ -207,6 +207,15 @@ static void color_for_radec(double ra, double dec, float* r, float* g, float* b)
  *   ...
  * A blank line or a new '#' line starts a new constellation.
  */
+
+/**
+ * Draw Hawaiian (or any custom) constellation stick figures.
+ * File format:
+ *   # Constellation Name (optional English in parentheses)
+ *   StarA  raA(deg)  decA(deg)   StarB  raB(deg)  decB(deg)
+ *   ...
+ * A blank line or a new '#' line starts a new constellation.
+ */
 static void
 draw_custom_constellations(cairos_t* cairos,
                            const sip_t* sip,
@@ -219,88 +228,128 @@ draw_custom_constellations(cairos_t* cairos,
         return;
     }
 
-    /* Set up variables */
-    char buf[256];
-    char name1[64], name2[64];
-    double ra1, dec1, ra2, dec2;
-    char cur_label[128] = "";
+    /* ---- Simple Cohen–Sutherland clipper implemented via macros ---- */
+    #define CS_LEFT   1
+    #define CS_RIGHT  2
+    #define CS_BOTTOM 4
+    #define CS_TOP    8
+    #define OUTCODE(_x,_y,_xmin,_ymin,_xmax,_ymax) \
+        (((_x) < (_xmin) ? CS_LEFT : ((_x) > (_xmax) ? CS_RIGHT : 0)) | \
+         ((_y) < (_ymin) ? CS_BOTTOM : ((_y) > (_ymax) ? CS_TOP   : 0)))
 
-    /* accumulate centers of visible line segments */
-    double sumx = 0.0, sumy = 0.0;
-    int nsegs = 0;
-
-    /* Set up styles */
-    const double LINE_W = 4.0;
-    cairo_set_line_width(cairos->shapes, LINE_W);
-    cairo_set_source_rgba(cairos->shapes, 1.0, 1.0, 1.0, 1.0);
-    cairo_set_line_width(cairos->shapesmask, LINE_W);
-    cairo_set_source_rgba(cairos->shapesmask, 1.0, 1.0, 1.0, 1.0);
-
-    /* Track text area for masking */
-    double text_area_x = 0;
-    double text_area_y = 0;
-    double text_area_w = 0;
-    double text_area_h = 0;
-    int has_active_text = 0;
-
-    /* helper: draw+clear label at centroid */
-    #define FLUSH_LABEL()                                                   \
-    do {                                                                \
-        if (nsegs > 0) {                                               \
-            double px = sumx / nsegs;                                  \
-            double py = sumy / nsegs;                                  \
-                                                                        \
-            /* Calculate text bounds */                                 \
-            cairo_text_extents_t extents;                               \
-            cairo_set_font_size(cairos->fg, 22.0);                      \
-            cairo_text_extents(cairos->fg, cur_label, &extents);        \
-                                                                        \
-            /* Adjust position to keep text on screen */                 \
-            if (px + extents.width > W) px = W - extents.width - 10;    \
-            if (px < 0) px = 10;                                        \
-            if (py + extents.height > H) py = H - extents.height - 10;  \
-            if (py - extents.height < 0) py = extents.height + 10;      \
-                                                                        \
-            /* Store text area for line masking */                      \
-            text_area_x = px - (extents.width/2) - 5;                   \
-            text_area_y = py - (extents.height/2) - 5;                  \
-            text_area_w = extents.width + 10;                           \
-            text_area_h = extents.height + 10;                          \
-            has_active_text = 1;                                        \
-                                                                        \
-            /* Clear area behind text */                                \
-            cairo_save(cairos->shapes);                                 \
-            cairo_set_operator(cairos->shapes, CAIRO_OPERATOR_CLEAR);   \
-            cairo_rectangle(cairos->shapes,                             \
-                          text_area_x, text_area_y,                     \
-                          text_area_w, text_area_h);                    \
-            cairo_fill(cairos->shapes);                                 \
-            cairo_restore(cairos->shapes);                              \
-                                                                        \
-            /* Draw the label */                                        \
-            cairo_set_source_rgba(cairos->fg, 1.0, 0.8, 0.2, 1.0);     \
-            add_text(cairos, cur_label, px, py, 'C', 'C');             \
-            cairo_set_font_size(cairos->fg, 20.0);                      \
-            cairo_set_source_rgba(cairos->fg, 1.0, 1.0, 1.0, 1.0);     \
-        }                                                               \
-        sumx = sumy = 0.0;                                              \
-        nsegs = 0;                                                      \
-        has_active_text = 0;                                            \
-        cur_label[0] = '\0';                                           \
+    /* Clips segment (x1,y1)-(x2,y2) to [0..VW]x[0..VH]; sets _accept=1 if any remains */
+    #define CLIP_TO_VIEW(x1,y1,x2,y2,VW,VH,_accept) do {                 \
+        double _xmin = 0.0, _ymin = 0.0, _xmax = (double)(VW), _ymax = (double)(VH); \
+        int _c1 = OUTCODE((x1),(y1),_xmin,_ymin,_xmax,_ymax);             \
+        int _c2 = OUTCODE((x2),(y2),_xmin,_ymin,_xmax,_ymax);             \
+        _accept = 0;                                                      \
+        while (1) {                                                       \
+            if (!(_c1 | _c2)) { _accept = 1; break; }                     \
+            if (_c1 & _c2) { _accept = 0; break; }                        \
+            double _x=0, _y=0; int _c = _c1 ? _c1 : _c2;                  \
+            if (_c & CS_TOP)    { _x = (x1) + ((x2)-(x1)) * ((_ymax-(y1))/((y2)-(y1))); _y = _ymax; } \
+            else if (_c & CS_BOTTOM){ _x = (x1) + ((x2)-(x1)) * ((_ymin-(y1))/((y2)-(y1))); _y = _ymin; } \
+            else if (_c & CS_RIGHT){ _y = (y1) + ((y2)-(y1)) * ((_xmax-(x1))/((x2)-(x1))); _x = _xmax; } \
+            else /* CS_LEFT */  { _y = (y1) + ((y2)-(y1)) * ((_xmin-(x1))/((x2)-(x1))); _x = _xmin; } \
+            if (_c == _c1) { (x1) = _x; (y1) = _y; _c1 = OUTCODE((x1),(y1),_xmin,_ymin,_xmax,_ymax); } \
+            else           { (x2) = _x; (y2) = _y; _c2 = OUTCODE((x2),(y2),_xmin,_ymin,_xmax,_ymax); } \
+        }                                                                 \
     } while (0)
 
+    /* Tests if segment intersects rect [rx,ry]..[rx+rw,ry+rh] (via clipping). */
+    #define SEG_INTERSECTS_RECT(x1,y1,x2,y2, rx,ry,rw,rh, _hit) do {     \
+        double _sx1 = (x1)-(rx), _sy1 = (y1)-(ry), _sx2 = (x2)-(rx), _sy2 = (y2)-(ry); \
+        int _acc;                                                         \
+        CLIP_TO_VIEW(_sx1,_sy1,_sx2,_sy2,(rw),(rh),_acc);                 \
+        _hit = _acc;                                                      \
+    } while (0)
+
+    /* ------------------- Per-drawing setup ------------------- */
+    const double LINE_W = 1.69;  /* requested line width */
+    cairo_set_line_width(cairos->shapes,      LINE_W);
+    cairo_set_source_rgba(cairos->shapes,     1.0, 1.0, 1.0, 1.0);
+    cairo_set_line_width(cairos->shapesmask,  LINE_W);
+    cairo_set_source_rgba(cairos->shapesmask, 1.0, 1.0, 1.0, 1.0);
+
+    /* Track previous label area to avoid overdraw by subsequent segments */
+    double text_area_x = 0.0, text_area_y = 0.0, text_area_w = 0.0, text_area_h = 0.0;
+    int has_active_text = 0;
+
+    /* Current constellation state */
+    char   cur_label[128] = "";
+    double cmx = 0.0, cmy = 0.0, cmz = 0.0;  /* spherical centroid accumulators */
+    int    cmcount = 0;
+    int    vis_star_count = 0;               /* counts endpoints on-screen in this block */
+
+    /* Flush helper: draw label using stable centroid only if >=1 star is visible, then reset.
+       Also clamp label CENTER so the entire text remains on-screen. */
+    #define FLUSH_LABEL()                                                     \
+    do {                                                                      \
+        if (cmcount > 0 && cur_label[0] && vis_star_count > 0) {              \
+            /* normalize centroid and convert to RA/Dec */                    \
+            double norm = sqrt(cmx*cmx + cmy*cmy + cmz*cmz);                  \
+            if (norm > 0.0) { cmx/=norm; cmy/=norm; cmz/=norm; }              \
+            double sra=0.0, sdec=0.0, px=0.0, py=0.0;                         \
+            xyzarr2radecdeg((double[3]){cmx,cmy,cmz}, &sra, &sdec);           \
+            /* project to pixels (even if anchor is outside, we’ll clamp inside) */ \
+            if (sip_radec2pixelxy(sip, sra, sdec, &px, &py)) {                \
+                /* measure text */                                            \
+                cairo_text_extents_t ext;                                     \
+                cairo_set_font_size(cairos->fg, 34.0);                        \
+                cairo_text_extents(cairos->fg, cur_label, &ext);              \
+                /* clamp CENTER so full text fits on-screen (pad accounts for margins) */ \
+                const double pad = 6.0;                                       \
+                double min_cx = ext.width * 0.5 + pad;                        \
+                double max_cx = (double)W - ext.width * 0.5 - pad;            \
+                double min_cy = ext.height * 0.5 + pad;                       \
+                double max_cy = (double)H - ext.height * 0.5 - pad;           \
+                if (px < min_cx) px = min_cx; else if (px > max_cx) px = max_cx; \
+                if (py < min_cy) py = min_cy; else if (py > max_cy) py = max_cy; \
+                /* record text area for masking against NEXT segments */      \
+                text_area_x = px - (ext.width/2) - 5;                          \
+                text_area_y = py - (ext.height/2) - 5;                         \
+                text_area_w = ext.width + 10;                                  \
+                text_area_h = ext.height + 10;                                 \
+                has_active_text = 1;                                          \
+                /* clear any lines beneath the label on the shapes layer */   \
+                cairo_save(cairos->shapes);                                   \
+                cairo_set_operator(cairos->shapes, CAIRO_OPERATOR_CLEAR);     \
+                cairo_rectangle(cairos->shapes, text_area_x, text_area_y,     \
+                                text_area_w, text_area_h);                    \
+                cairo_fill(cairos->shapes);                                   \
+                cairo_restore(cairos->shapes);                                \
+                /* draw the label itself (white), centered */                 \
+                cairo_set_source_rgba(cairos->fg, 1.0, 1.0, 1.0, 1.0);        \
+                add_text(cairos, cur_label, px, py, 'C', 'C');                \
+                cairo_set_font_size(cairos->fg, 25.0);                        \
+            }                                                                 \
+        }                                                                     \
+        /* reset accumulators for the next block */                           \
+        cur_label[0] = '\0';                                                  \
+        cmx = cmy = cmz = 0.0;                                                \
+        cmcount = 0;                                                          \
+        vis_star_count = 0;                                                   \
+    } while (0)
+
+    /* --------------- Parse file and draw segments --------------- */
+    char   buf[256];
+    char   name1[64], name2[64];
+    double ra1=0.0, dec1=0.0, ra2=0.0, dec2=0.0;
+
     while (fgets(buf, sizeof(buf), f)) {
-        /* new constellation header? */
+        /* new constellation header */
         if (buf[0] == '#') {
             FLUSH_LABEL();
-            /* copy everything after '#', trim newline */
+            /* copy label (after '#'), trim newline */
             strncpy(cur_label, buf + 1, sizeof(cur_label) - 1);
+            cur_label[sizeof(cur_label)-1] = '\0';
             cur_label[strcspn(cur_label, "\r\n")] = '\0';
             continue;
         }
 
         /* skip blanks */
-        if (isspace((unsigned char)buf[0])) continue;
+        if (isspace((unsigned char)buf[0]))
+            continue;
 
         /* parse one segment */
         if (sscanf(buf, "%63s %lf %lf %63s %lf %lf",
@@ -308,58 +357,73 @@ draw_custom_constellations(cairos_t* cairos,
                    name2, &ra2, &dec2) != 6)
             continue;
 
-        /* project endpoints */
-        double x1, y1, x2, y2;
-        if (!sip_radec2pixelxy(sip, ra1, dec1, &x1, &y1) ||
-            !sip_radec2pixelxy(sip, ra2, dec2, &x2, &y2))
-            continue;
-
-        /* Check if line segment intersects visible area */
-        double mid_x = (x1 + x2) / 2;
-        double mid_y = (y1 + y2) / 2;
-        
-        /* At least one endpoint or midpoint must be visible */
-        if ((x1 >= 0 && x1 < W && y1 >= 0 && y1 < H) ||
-            (x2 >= 0 && x2 < W && y2 >= 0 && y2 < H) ||
-            (mid_x >= 0 && mid_x < W && mid_y >= 0 && mid_y < H)) {
-            /* Add midpoint of visible segment to label position calculation */
-            sumx += mid_x;
-            sumy += mid_y;
-            nsegs++;
+        /* accumulate endpoints for stable centroid (regardless of visibility) */
+        {
+            double xyz[3];
+            radecdeg2xyzarr(ra1, dec1, xyz);
+            cmx += xyz[0]; cmy += xyz[1]; cmz += xyz[2]; cmcount++;
+            radecdeg2xyzarr(ra2, dec2, xyz);
+            cmx += xyz[0]; cmy += xyz[1]; cmz += xyz[2]; cmcount++;
         }
 
-        /* Draw the line segments with text masking */
-        const double R = 25;
-        double vx = x2 - x1, vy = y2 - y1;
-        double d = hypot(vx, vy);
-        if (d > 0) {
-            double ux = vx/d, uy = vy/d;
-            double sx = x1 + ux*R, sy = y1 + uy*R;
-            double ex = x2 - ux*R, ey = y2 - uy*R;
+        /* project endpoints to pixel space */
+        double x1=0.0, y1=0.0, x2=0.0, y2=0.0;
+        if (!sip_radec2pixelxy(sip, ra1, dec1, &x1, &y1)) continue;
+        if (!sip_radec2pixelxy(sip, ra2, dec2, &x2, &y2)) continue;
 
-            /* Skip drawing if line intersects with active text area */
-            if (!has_active_text || 
-                !((sx >= text_area_x && sx <= text_area_x + text_area_w &&
-                   sy >= text_area_y && sy <= text_area_y + text_area_h) ||
-                  (ex >= text_area_x && ex <= text_area_x + text_area_w &&
-                   ey >= text_area_y && ey <= text_area_y + text_area_h))) {
-                cairo_move_to(cairos->shapes, sx, sy);
-                cairo_line_to(cairos->shapes, ex, ey);
-                cairo_stroke(cairos->shapes);
+        /* count visible stars (endpoints) on screen for label gating */
+        if (x1 >= 0 && x1 < W && y1 >= 0 && y1 < H) vis_star_count++;
+        if (x2 >= 0 && x2 < W && y2 >= 0 && y2 < H) vis_star_count++;
 
-                cairo_move_to(cairos->shapesmask, sx, sy);
-                cairo_line_to(cairos->shapesmask, ex, ey);
-                cairo_stroke(cairos->shapesmask);
-            }
+        /* clip to viewport; skip if fully outside */
+        int accept = 0;
+        double cx1 = x1, cy1 = y1, cx2 = x2, cy2 = y2;
+        CLIP_TO_VIEW(cx1, cy1, cx2, cy2, (double)W, (double)H, accept);
+        if (!accept) continue;
+
+        /* safe trim at both ends so lines don't butt into star glyphs */
+        const double R = 25.0;
+        double vx = cx2 - cx1, vy = cy2 - cy1;
+        double d  = hypot(vx, vy);
+        if (d <= 0.0 || !isfinite(d)) continue;
+        double trim = fmin(R, d * 0.45); /* at most ~45% per end */
+        double ux = vx / d,  uy = vy / d;
+        double sx = cx1 + ux * trim, sy = cy1 + uy * trim;
+        double ex = cx2 - ux * trim, ey = cy2 - uy * trim;
+
+        if (!isfinite(sx) || !isfinite(sy) || !isfinite(ex) || !isfinite(ey))
+            continue;
+
+        /* avoid drawing under the previous label's text rectangle */
+        int overlaps_text = 0;
+        if (has_active_text) {
+            SEG_INTERSECTS_RECT(sx, sy, ex, ey, text_area_x, text_area_y, text_area_w, text_area_h, overlaps_text);
+        }
+        if (!overlaps_text) {
+            cairo_move_to(cairos->shapes, sx, sy);
+            cairo_line_to(cairos->shapes, ex, ey);
+            cairo_stroke(cairos->shapes);
+
+            cairo_move_to(cairos->shapesmask, sx, sy);
+            cairo_line_to(cairos->shapesmask, ex, ey);
+            cairo_stroke(cairos->shapesmask);
         }
     }
 
-    /* final label */
+    /* flush last block */
     FLUSH_LABEL();
-    #undef FLUSH_LABEL
-    fclose(f);
-}
 
+    fclose(f);
+
+    /* cleanup macro namespace */
+    #undef SEG_INTERSECTS_RECT
+    #undef CLIP_TO_VIEW
+    #undef OUTCODE
+    #undef CS_TOP
+    #undef CS_BOTTOM
+    #undef CS_RIGHT
+    #undef CS_LEFT
+}
 
 
 int main(int argc, char** args) {
@@ -392,7 +456,7 @@ int main(int argc, char** args) {
     cairo_surface_t* surffg = NULL;
     cairo_t* cairo = NULL;
 
-    double lw = 2.0;
+    double lw = 1.69;
     // circle linewidth.
     double cw = 0.0;
 
@@ -406,7 +470,7 @@ int main(int argc, char** args) {
     // circle radius.
     double crad = endgap;
 
-    double fontsize = 20.0;
+    double fontsize = 25.0;
 
     double label_offset = 15.0;
 
@@ -645,7 +709,7 @@ int main(int argc, char** args) {
         cairo_set_source_rgba(cairo, 1.0, 1.0, 1.0, 1.0);
         cairo_scale(cairo, scale, scale);
         //cairo_select_font_face(cairo, "helvetica", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-        cairo_select_font_face(cairo, "DejaVu Sans Mono Book", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_select_font_face(cairo, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cairo, fontsize);
 
         surfshapes = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
@@ -654,7 +718,7 @@ int main(int argc, char** args) {
         cairo_set_antialias(cairoshapes, CAIRO_ANTIALIAS_GRAY);
         cairo_set_source_rgba(cairoshapes, 1.0, 1.0, 1.0, 1.0);
         cairo_scale(cairoshapes, scale, scale);
-        cairo_select_font_face(cairoshapes, "DejaVu Sans Mono Book", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_select_font_face(cairoshapes, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cairoshapes, fontsize);
 
         surfshapesmask = cairo_image_surface_create(CAIRO_FORMAT_A8, W, H);
@@ -663,7 +727,7 @@ int main(int argc, char** args) {
         cairo_set_antialias(cairoshapesmask, CAIRO_ANTIALIAS_GRAY);
         cairo_set_source_rgba(cairoshapesmask, 1.0, 1.0, 1.0, 1.0);
         cairo_scale(cairoshapesmask, scale, scale);
-        cairo_select_font_face(cairoshapesmask, "DejaVu Sans Mono Book", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_select_font_face(cairoshapesmask, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cairoshapesmask, fontsize);
         cairo_paint(cairoshapesmask);
         cairo_stroke(cairoshapesmask);
@@ -674,7 +738,7 @@ int main(int argc, char** args) {
         cairo_set_antialias(cairobg, CAIRO_ANTIALIAS_GRAY);
         cairo_set_source_rgba(cairobg, 0, 0, 0, 1);
         cairo_scale(cairobg, scale, scale);
-        cairo_select_font_face(cairobg, "DejaVu Sans Mono Book", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_select_font_face(cairobg, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
         cairo_set_font_size(cairobg, fontsize);
 
         cairos->bg = cairobg;
@@ -747,6 +811,25 @@ int main(int argc, char** args) {
             uniqstars = constellations_get_unique_stars(c);
             inboundstars = il_new(16);
 
+            // --- Stable label anchor from ALL constellation members (spherical mean) ---
+            double label_ra = 0.0, label_dec = 0.0;
+            {
+                double cm3[3] = {0,0,0};
+                for (i = 0; i < il_size(uniqstars); i++) {
+                    int s = il_get(uniqstars, i);
+                    double sra, sdec, xyz[3];
+                    constellations_get_star_radec(s, &sra, &sdec);
+                    radecdeg2xyzarr(sra, sdec, xyz);
+                    cm3[0] += xyz[0];
+                    cm3[1] += xyz[1];
+                    cm3[2] += xyz[2];
+                }
+                cm3[0] /= il_size(uniqstars);
+                cm3[1] /= il_size(uniqstars);
+                cm3[2] /= il_size(uniqstars);
+                xyzarr2radecdeg(cm3, &label_ra, &label_dec);
+            }
+
             Nunique = il_size(uniqstars);
             debug("%s: %zu unique stars.\n", shortname, il_size(uniqstars));
 
@@ -791,40 +874,13 @@ int main(int argc, char** args) {
                 cairo_set_source_rgba(cairoshapes, 1.0,1.0,1.0,1.0);
                 cairo_set_line_width(cairoshapes, cw);
                 // cairo_set_source_rgba(cairo, r,g,b,0.8); // make all lines white
-                cairo_set_source_rgba(cairo, 1.0, 0.8, 0.2, 1.0);
+                cairo_set_source_rgba(cairo, 1.0, 1.0, 1.0, 1.0);
                 cairo_set_line_width(cairo, cw);
             }
 
-            // Draw circles around each star.
-            // Find center of mass (of the in-bounds stars)
-            cmass[0] = cmass[1] = cmass[2] = 0.0;
-            for (i=0; i<il_size(inboundstars); i++) {
-                double xyz[3];
-                int star = il_get(inboundstars, i);
-                constellations_get_star_radec(star, &ra, &dec);
-                if (!sip_radec2pixelxy(&sip, ra, dec, &px, &py))
-                    continue;
-                if (px < 0 || py < 0 || px*scale > W || py*scale > H)
-                    continue;
-                if (!justlist) {
-                    //cairo_arc(cairobg, px, py, crad+1.0, 0.0, 2.0*M_PI);
-                    //cairo_stroke(cairobg);
-                    //cairo_arc(cairoshapes, px, py, crad, 0.0, 2.0*M_PI);
-                    //cairo_stroke(cairoshapes);
-                }
-                radecdeg2xyzarr(ra, dec, xyz);
-                cmass[0] += xyz[0];
-                cmass[1] += xyz[1];
-                cmass[2] += xyz[2];
-            }
-            cmass[0] /= il_size(inboundstars);
-            cmass[1] /= il_size(inboundstars);
-            cmass[2] /= il_size(inboundstars);
-            xyzarr2radecdeg(cmass, &ra, &dec);
-
             il_free(inboundstars);
 
-            if (!sip_radec2pixelxy(&sip, ra, dec, &px, &py))
+            if (!sip_radec2pixelxy(&sip, label_ra, label_dec, &px, &py))
                 continue;
 
             shortname = constellations_get_shortname(c);
@@ -855,9 +911,9 @@ int main(int argc, char** args) {
                 py = H/scale - textents.height;
             logverb("%s at (%g, %g)\n", shortname, px, py);
 
-            cairo_set_font_size(cairos->fg, 22.0);
+            cairo_set_font_size(cairos->fg, 34.0);
             add_text(cairos, longname, px, py, halign, valign);
-            cairo_set_font_size(cairos->fg, 20.0);
+            cairo_set_font_size(cairos->fg, 25.0);
             
             // Draw the lines.
             cairo_set_line_width(cairoshapes, lw);
@@ -987,7 +1043,7 @@ int main(int argc, char** args) {
                 // cairo_set_source_rgba(cairoshapes, r,g,b, 0.8); // set lines to white
                 // cairo_set_source_rgba(cairo, r,g,b, 0.8); // set lines to white
                 cairo_set_source_rgba(cairoshapes, 1.0, 1.0, 1.0, 1.0);
-                cairo_set_source_rgba(cairo, 1.0, 1.0, 1.0, 1.0);
+                cairo_set_source_rgba(cairo, 0.6902, 0.8784, 0.9020, 1.0);
                 
             }
 
@@ -1212,14 +1268,14 @@ int main(int argc, char** args) {
             if (px < 0 || py < 0 || px*scale > W || py*scale > H)
                 continue;
             //// Draw a circle for the object
-            //cairo_set_source_rgba(cairoshapes, 1.0, 0.8, 0.2, 1.0); // gold color
+            //cairo_set_source_rgba(cairoshapes, 1.0, 1.0, 1.0, 1.0); // gold color
             //cairo_arc(cairoshapes, px, py, crad*1.5, 0.0, 2.0*M_PI);
             //cairo_stroke(cairoshapes);
             // Draw the label
-            cairo_set_source_rgba(cairos->fg, 0.9, 0.1, 0.1, 1.0);
-            cairo_set_font_size(cairos->fg, 22.0);
+            cairo_set_source_rgba(cairos->fg, 0.0, 0.0, 1.0, 1.0);
+            cairo_set_font_size(cairos->fg, 31.0);
             add_text(cairos, name, px + label_offset, py, halign, valign);
-            cairo_set_font_size(cairos->fg, 20.0);
+            cairo_set_font_size(cairos->fg, 25.0);
             cairo_set_source_rgba(cairos->fg, 1.0, 1.0, 1.0, 1.0);
         }
         fclose(f);
@@ -1244,11 +1300,15 @@ int main(int argc, char** args) {
             if (px < 0 || py < 0 || px*scale > W || py*scale > H)
                 continue;
             //// Draw a circle for the object
-            //cairo_set_source_rgba(cairoshapes, 1.0, 0.8, 0.2, 1.0); // gold color
+            //cairo_set_source_rgba(cairoshapes, 1.0, 1.0, 1.0, 1.0); // gold color
             //cairo_arc(cairoshapes, px, py, crad*1.5, 0.0, 2.0*M_PI);
             //cairo_stroke(cairoshapes);
             // Draw the label
+            cairo_set_source_rgba(cairos->fg, 0.6902, 0.8784, 0.9020, 1.0);
             add_text(cairos, name, px + label_offset, py, halign, valign);
+            cairo_set_font_size(cairos->fg, 25.0);
+            cairo_set_source_rgba(cairos->fg, 1.0, 1.0, 1.0, 1.0);
+
         }
         fclose(f);
     }
