@@ -24,18 +24,26 @@ class OverlayRequest(BaseModel):
 
 # where your script will emit the finished movie:
 OUTPUT_FILE = "/data/cloudcams/cloudcam2025/requested_overlay_movie.mp4"
+TMP_FILE_NAME = "requested_overlay_movie_tmp"
+TMP_FILE = f"/data/cloudcams/cloudcam2025/{TMP_FILE_NAME}.mp4"
 
 def run_job(req: OverlayRequest):
-    # Get the last modification time
-    last_mod_time = os.path.getmtime(OUTPUT_FILE)
-
+    # delete any old movie
+    try:
+        os.remove(OUTPUT_FILE)
+    except FileNotFoundError:
+        pass
     # 1) generate all the frames + movie
     timelapse_with_overlay(
-        req.constellations, req.stars, req.planets, req.date
+        movie_out_name = TMP_FILE_NAME, 
+        constellations = req.constellations, 
+        stars = req.stars, 
+        planets = req.planets, 
+        date_of_timelapse = req.date
     )
-    # 2) (optional) wait until the video updates in nas
-    while os.path.getmtime(OUTPUT_FILE) != last_mod_time:
-        time.sleep(1)
+
+    # atomically move into place
+    os.replace(TMP_FILE, OUTPUT_FILE)
 
     return {"status": "completed"}
 
