@@ -142,9 +142,9 @@ include("../en/includes/header.php");
             <?php if ($cam === 'cloudcam2025'): ?>
             <p>
             Use this link to download it with an overlay:
-            <a href="#" class="overlay-btn" onclick="openOverlayPopup(); return false;">
+            <strong><a href="#" class="overlay-btn" onclick="openOverlayPopup(); return false;">
                 Download Timelapse with Overlay
-            </a>
+            </a></strong>
             </p>
             <?php endif; ?>
 
@@ -156,22 +156,22 @@ include("../en/includes/header.php");
                   <!-- CONSTELLATIONS -->
                   <div class="option-col">
                     <h3>Constellations</h3>
-                    <label><button class="circle-btn constellation-btn" data-value="none"></button>None</label>
-                    <label><button class="circle-btn constellation-btn" data-value="western"></button>Western</label>
-                    <label><button class="circle-btn constellation-btn" data-value="hawaiian"></button>Hawaiian</label>
+                    <label><button class="circle-btn constellation-btn" data-value=""></button>None</label>
+                    <label><button class="circle-btn constellation-btn" data-value="_westernconst"></button>Western</label>
+                    <label><button class="circle-btn constellation-btn" data-value="_hawaiianconst"></button>Hawaiian</label>
                   </div>
                   <!-- STARS -->
                   <div class="option-col">
                     <h3>Stars</h3>
-                    <label><button class="circle-btn star-btn" data-value="none"></button>None</label>
-                    <label><button class="circle-btn star-btn" data-value="western"></button>Western</label>
-                    <label><button class="circle-btn star-btn" data-value="hawaiian"></button>Hawaiian</label>
+                    <label><button class="circle-btn star-btn" data-value=""></button>None</label>
+                    <label><button class="circle-btn star-btn" data-value="_westernstars"></button>Western</label>
+                    <label><button class="circle-btn star-btn" data-value="_hawaiianstars"></button>Hawaiian</label>
                   </div>
                   <!-- PLANETS -->
                   <div class="option-col">
                     <h3>Planets</h3>
-                    <label><button class="circle-btn planet-btn" data-value="off"></button>Off</label>
-                    <label><button class="circle-btn planet-btn" data-value="on"></button>On</label>
+                    <label><button class="circle-btn planet-btn" data-value=""></button>Off</label>
+                    <label><button class="circle-btn planet-btn" data-value="_planets"></button>On</label>
                   </div>
                 </div>
                 <div id="statusMessage" class="status"></div>
@@ -286,16 +286,11 @@ include("../en/includes/header.php");
   });
 
   generateBtn.onclick = async () => {
-    // require one per column
-    if (!selectedValues.constellation || !selectedValues.star || !selectedValues.planet) {
-      alert('Please make a selection in each category');
-      return;
-    }
     // block all‑none/off
     if (
-      selectedValues.constellation==='none' &&
-      selectedValues.star==='none' &&
-      selectedValues.planet==='off'
+      selectedValues.constellation==='' &&
+      selectedValues.star==='' &&
+      selectedValues.planet===''
     ) {
       alert('Please select at least one overlay option. To download raw timelapse, use the "Download" link below the video.');
       return;
@@ -318,12 +313,16 @@ include("../en/includes/header.php");
           date:           currentDate
         })
       });
-      // → Poll our output file directly with a HEAD request
-      while (isGenerating) {
-        const resp = await fetch('/cloudcam2/cloudcam2025/images/requested_overlay_movie.mp4', { method: 'HEAD' });
+      // get the URL
+      // poll for “exists”
+      const url = '/cloudcam2/cloudcam2025/images/requested_overlay_movie.mp4';
+      while (true) {
+        // bust any browser/CDN cache
+        const resp = await fetch(url + '?_=' + Date.now(), { method: 'HEAD' });
         if (resp.ok) break;
-        await new Promise(r=>setTimeout(r,1000));
+        await new Promise(r => setTimeout(r, 1000));
       }
+
       if (isGenerating) {
         let link = document.createElement('a');
         link.href = '/cloudcam2/cloudcam2025/images/requested_overlay_movie.mp4';
