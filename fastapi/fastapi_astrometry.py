@@ -43,27 +43,8 @@ def crop(img_source):
 
     # create polygon to keep
     sky_poly = np.array([
-        # [0, 0],  # top-left
-        # [img.shape[1], 0],  # top-right
-        # [img.shape[1], 1302],
-        # [1504, 1302],
-        # [1501, 1280],
-        # [1428, 1283],
-        # [1428, 1302],
-        # [1167, 1302],
-        # [1084, 1300],
-        # [1001, 1270],
-        # [933, 1300],
-        # [602, 1313],
-        # [201, 1273],
-        # [37, 1254],
-        # [0, 1214]
-
-        # [0, 0],  # top-left
-        # [img.shape[1], 0],  # top-right
-        # [img.shape[1], float(img.shape[0]) * .875],  # bottom-right
-        # [0, float(img.shape[0]) * .875],  # bottom-left
-
+        ## change the crop based on the frame corner pixel locations (as listed)
+        ## change every time FOV changes
         [360, 0],
         [670, 0],
         [2012, 1235],
@@ -88,10 +69,6 @@ def crop(img_source):
     img[inv==255] = (0,0,0)
 
     return img
-
-# # test to show cropped image
-# img = crop('/home/akami-3/gitlabsource/CloudCams/code/adjusted2025-07-08 09:29:05.796816.png')
-# cv2.imwrite("/home/akami-3/gitlabsource/CloudCams/code/cropped.png", img)
 
 def get_utc_time(img_name):
     # Extract the datetime string from the filename using regex
@@ -169,9 +146,7 @@ def recalibrate_wcs(input_image_path):
 
     initial_utc, initial_ra, initial_dec = get_initial_wcs_val(input_image_path)
     save_initial_wcs_values()
-# img = crop('/home/akami-3/gitlabsource/CloudCams/good/cloudcam2250716-205932.jpg')
-# cv2.imwrite('/home/akami-3/gitlabsource/CloudCams/src/cloudcam2250716-205932.jpg', img)
-# recalibrate_wcs('/home/akami-3/gitlabsource/CloudCams/src/cloudcam2250716-205932.jpg')
+
 def get_center_skycoord(utc_observation_time, location):
     global initial_utc, initial_ra, initial_dec
     # Load initial wcs values
@@ -434,5 +409,3 @@ def overlay(img_path, out_dir, constellations: str, stars: str, planets: str):
         print('Astrometry failed')
 
     return new_img_path
-
-# overlay('/home/akami-3/gitlabsource/CloudCams/CloudCamImages/CloudCam250715/cloudcam2250716-010422.jpg', '/home/akami-3/gitlabsource/CloudCams/src', True, True)
