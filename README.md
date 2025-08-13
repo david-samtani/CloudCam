@@ -32,6 +32,8 @@ CloudCam is an intelligent astronomical imaging system that:
 - Uploads current images and timelapses to the CFHT CloudCam website
 - Creates nightly timelapse videos and lightweight 30-minute "recent activity" loops
 
+> **Note:** This repository was ported from a private GitLab instance at CFHT where most of the original development occurred. As a result, the commit history starts fresh on GitHub.
+
 ## Features
 
 ### Core Functionality
