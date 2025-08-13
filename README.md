@@ -9,7 +9,6 @@ A high-sensitivity, fully-automated capture-overlay-timelapse system for CFHT Cl
   - [Core Functionality](#core-functionality)
 - [Installation](#installation)
   - [Prerequisites](#prerequisites)
-  - [Docker Deployment](#docker-deployment)
 - [Project Structure](#project-structure)
 - [Module Documentation](#module-documentation)
   - [`automated_process.py` - Main Daemon](#automated_processpy---main-daemon)
@@ -56,17 +55,6 @@ Check the Dockerfile in the repository for complete dependencies. Key requiremen
 - Astropy
 - Skyfield
 - FastAPI (for web interface)
-
-### Docker Deployment
-```bash
-# Clone the repository
-git clone https://github.com/david-samtani/CloudCam.git
-cd CloudCam
-
-# Build and run Docker container
-docker build -t cloudcam .
-docker run -d --name cloudcam cloudcam
-```
 
 ## Project Structure
 
