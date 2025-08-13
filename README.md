@@ -1,3 +1,206 @@
-# CloudCams
+# CloudCam - Automated Sky Imaging System
 
-This is the project space for software and documentation related to the new CFHT cloud cameras.  
+A high-sensitivity, fully-automated capture-overlay-timelapse system for CFHT CloudCams that replaces the original DSLR system with a modern, Python-driven stack.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+  - [Core Functionality](#core-functionality)
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Docker Deployment](#docker-deployment)
+- [Project Structure](#project-structure)
+- [Module Documentation](#module-documentation)
+  - [`automated_process.py` - Main Daemon](#automated_processpy---main-daemon)
+  - [`astrometry.py` - Celestial Mechanics](#astrometrypy---celestial-mechanics)
+  - [`auto_brightness.py` - Exposure Control](#auto_brightnesspy---exposure-control)
+  - [`take_image.py` - Camera Interface](#take_imagepy---camera-interface)
+  - [`timelapse.py` - Video Generation](#timelapsepy---video-generation)
+- [Usage](#usage)
+  - [Basic Operation](#basic-operation)
+  - [Web Interface](#web-interface)
+- [License](#license)
+
+## Overview
+
+CloudCam is an intelligent astronomical imaging system that:
+- Captures high-resolution sky frames only during astronomical night
+- Self-adjusts exposure and gain to handle rapid dusk/dawn changes
+- Recalibrates its WCS (World Coordinate System) solution whenever enough stars are visible
+- Generates transparent overlays for Western and/or Hawaiian constellations, planets, and ISS
+- Displays live frames in a real-time Matplotlib viewer
+- Uploads current images and timelapses to the CFHT CloudCam website
+- Creates nightly timelapse videos and lightweight 30-minute "recent activity" loops
+
+## Features
+
+### Core Functionality
+- **Automated Night Detection**: Uses observatory telemetry to determine sunset/sunrise times
+- **Adaptive Exposure Control**: Automatically adjusts camera settings for optimal sky brightness
+- **Astrometric Calibration**: Real-time WCS solving and sky coordinate tracking
+- **Cultural Star Overlays**: Support for both Western and Hawaiian constellation patterns
+- **Planetary Tracking**: Real-time ephemeris calculation for planets, Sun, Moon, and ISS
+- **Live Monitoring**: Real-time image display and status logging
+- **Timelapse Generation**: Automated creation of nightly MP4 timelapses
+
+## Installation
+
+### Prerequisites
+Check the Dockerfile in the repository for complete dependencies. Key requirements include:
+- Python 3.x
+- OpenCV
+- NumPy
+- Matplotlib (TkAgg backend)
+- Photutils
+- Astropy
+- Skyfield
+- FastAPI (for web interface)
+
+### Docker Deployment
+```bash
+# Clone the repository
+git clone https://github.com/david-samtani/CloudCam.git
+cd CloudCam
+
+# Build and run Docker container
+docker build -t cloudcam .
+docker run -d --name cloudcam cloudcam
+```
+
+## Project Structure
+
+Below is an overview of the `CloudCam` repository's file and folder structure, along with brief descriptions of each component.
+
+```
+CloudCam-main/
+├── .gitignore                  # Ignore rules for Git version control
+├── .gitlab-ci.yml              # GitLab CI/CD pipeline configuration
+├── Dockerfile                  # Docker image setup for deployment
+├── README.md                   # Main project documentation
+├── docker-compose.yml          # Docker multi-container setup
+├── requirments.txt             # Python package dependencies
+
+├── Conceptual_design/          # Project Design & Planning
+│   ├── .gitkeep
+│   ├── cloudcam_requirements_conceptual_design.md
+│   └── initial.wcs
+
+├── astrometry-net-indexes/     # Star Calibration Index Files
+│   ├── index-4118.fits
+│   └── index-4119.fits
+
+├── astrometrynet_files/        # Supporting Files for Calibration
+│   ├── astrometry-ngc.png
+│   └── initial_wcs_values.txt
+
+├── data/                       # Astronomical Data Inputs
+│   ├── de442s.bsp
+│   ├── ephem.cat
+│   ├── hawaiian_const.lines
+│   ├── hawaiian_const.stars
+│   └── tle.txt
+
+├── fastapi/                    # Backend API Service
+│   ├── fastapi_astrometry.py       # API endpoint for astrometry operations
+│   ├── fastapi_timelapse.py        # API endpoint for timelapse generation
+│   ├── main.py                     # FastAPI app entry point
+│   ├── requirements.txt            # Specific dependencies for this service
+│   ├── timelapse_overlay.py        # Logic for applying overlays to timelapse frames
+│   ├── __pycache__/                # Cached Python bytecode
+│   └── venv/                       # Local Python virtual environment (excluded from Git)
+
+├── src/                        # Core Logic & Automation Modules
+│   ├── astrometry.py               # Star pattern solving and celestial alignment
+│   ├── auto_brightness.py          # Dynamic brightness/auto-exposure logic
+│   ├── automated_process.py       # Main orchestration pipeline
+│   ├── take_image.py              # Camera control and image acquisition
+│   ├── timelapse.py               # Timelapse creation logic
+│   └── __pycache__/               # Bytecode cache (autogenerated)
+```
+
+## Module Documentation
+
+### `automated_process.py` - Main Daemon
+The core process that orchestrates the entire system:
+- Creates daily directory structures
+- Manages nighttime imaging loops
+- Handles WCS calibration triggers
+- Generates overlays and captions
+- Logs operational status to CFHT status server
+- Saves images to the CFHT's NAS (CFHT's data storage unit)
+
+**Key Functions:**
+- `main()` - Main execution loop
+- `image_capture()` - Core nighttime imaging loop
+- `capture_with_timeout()` - Robust image capture with retry
+- `visible_stars()` - Star detection for WCS triggers
+
+### `astrometry.py` - Celestial Mechanics
+Handles all astronomical calculations and overlay generation:
+- WCS solving using astrometry.net
+- Sky coordinate transformations
+- Ephemeris calculations for celestial objects
+- Constellation overlay rendering
+
+**Key Functions:**
+- `recalibrate_wcs()` - Initial WCS solution
+- `repoint_wcs()` - Updates WCS for sky rotation
+- `overlay()` - Complete overlay pipeline
+
+### `auto_brightness.py` - Exposure Control
+Maintains optimal image brightness through intelligent exposure management:
+- Target mean brightness: 52 (configurable)
+- Prioritizes exposure time adjustments over gain
+- Fast mode for rapid twilight transitions
+
+### `take_image.py` - Camera Interface
+Manages TCP communication with camera server:
+- Connects to camera server (default: 128.171.80.243:915)
+- Retrieves current camera settings
+- Captures and saves timestamped images
+- Updates camera settings based on brightness analysis
+- Saves images to the CFHT's NAS (CFHT's data storage unit)
+
+### `timelapse.py` - Video Generation
+Creates MP4 timelapses from image sequences:
+- Supports variable frame rates (default: 10 fps)
+- Automatic frame resizing
+- H.264 encoding
+- Saves timeslapses to the CFHT's NAS (CFHT's data storage unit)
+
+## Usage
+
+### Basic Operation
+1. The system automatically starts imaging at astronomical night
+2. Exposure and gain are continuously adjusted for optimal brightness
+3. When sufficient stars are detected, WCS calibration is performed
+4. Constellation overlays are generated and applied to images
+5. Every 30 minutes, a short timelapse preview is created
+6. At dawn, a complete nightly timelapse is generated
+
+### Web Interface
+[Official CFHT Index CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/index.php)
+[Updated CFHT Index CloudCam website page (unstyled)](https://www.cfht.hawaii.edu/cloudcam2/cloudcam2025/index.php?cam=cloudcam2025)
+
+[Official CFHT Timelapse CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/timelapse.php)
+[Updated CFHT Timelapse Cloudcam website page](https://www.cfht.hawaii.edu/cloudcam2/timelapse2025.php?cam=cloudcam2025)
+
+Access the web interface for:
+- Live camera feed viewing
+- Custom overlay selection for live camera feed
+- Timelapse downloads
+- Custom overlay selection generation for timelapses
+- Hawaiian/Western constellations/stars and planet overlay labeling customizability
+
+> **Note:** When camera is deployed on the summit, the updated pages' feed and functionalities will become operational
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+You are free to use, modify, and distribute this software for any purpose, including commercial applications, as long as the original license and copyright notice are included.
+
+© 2025 David Samtani
+
+---
