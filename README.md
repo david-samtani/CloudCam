@@ -171,10 +171,9 @@ Creates MP4 timelapses from image sequences:
 
 ### Web Interface
 [Official CFHT Index CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/index.php)
-[Updated CFHT Index CloudCam website page (unstyled)](https://www.cfht.hawaii.edu/cloudcam2/cloudcam2025/index.php?cam=cloudcam2025)
-
 [Official CFHT Timelapse CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/timelapse.php)
-[Updated CFHT Timelapse Cloudcam website page](https://www.cfht.hawaii.edu/cloudcam2/timelapse2025.php?cam=cloudcam2025)
+
+Updated web pages are not publicly avalible until camera deployment.
 
 Access the web interface for:
 - Live camera feed viewing
