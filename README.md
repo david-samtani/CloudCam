@@ -171,9 +171,8 @@ Creates MP4 timelapses from image sequences:
 
 ### Web Interface
 [Official CFHT Index CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/index.php)
-[Official CFHT Timelapse CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/timelapse.php)
 
-Updated web pages are not publicly avalible until camera deployment.
+[Official CFHT Timelapse CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/timelapse.php)
 
 Access the web interface for:
 - Live camera feed viewing
@@ -182,7 +181,7 @@ Access the web interface for:
 - Custom overlay selection generation for timelapses
 - Hawaiian/Western constellations/stars and planet overlay labeling customizability
 
-> **Note:** When camera is deployed on the summit, the updated pages' feed and functionalities will become operational
+> **Note:** New web pages are not publicly avalible until camera deployment.
 
 ## License
 
