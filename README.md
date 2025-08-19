@@ -170,9 +170,7 @@ Creates MP4 timelapses from image sequences:
 6. At dawn, a complete nightly timelapse is generated
 
 ### Web Interface
-[Official CFHT Index CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/index.php)
-
-[Official CFHT Timelapse CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/timelapse.php)
+[Official CFHT Index CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/index.php) | [Official CFHT Timelapse CloudCam website page](https://www.cfht.hawaii.edu/en/gallery/cloudcams/timelapse.php)
 
 Access the web interface for:
 - Live camera feed viewing
